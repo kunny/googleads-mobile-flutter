@@ -1,0 +1,26 @@
+name: google_mobile_ads_facebook
+description: Flutter plugin for Google Mobile Ads, supporting
+  banner, interstitial (full-screen),  rewarded and native ads
+homepage: https://github.com/googleads/googleads-mobile-flutter/tree/master/packages/google_mobile_ads
+version: 1.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: io.flutter.plugins.googlemobileads.facebook
+        pluginClass: GoogleMobileAdsFacebookPlugin
+      ios:
+        pluginClass: FLTGoogleMobileAdsFacebookPlugin
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+environment:
+  sdk: ">=2.7.0 <3.0.0"
+  flutter: ">=1.20.0"
