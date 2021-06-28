@@ -18,6 +18,7 @@
 
   if ([call.method isEqualToString:@"FBAdSettings#setAdvertiserTrackingEnabled"]) {
     [FBAdSettings setAdvertiserTrackingEnabled:call.arguments[@"enabled"]];
+    result(nil);
   }
 }
 

@@ -17,21 +17,40 @@ package io.flutter.plugins.googlemobileads.facebook;
 import androidx.annotation.NonNull;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.common.PluginRegistry.Registrar;
 
-public class GoogleMobileAdsFacebookPlugin implements FlutterPlugin {
+public class GoogleMobileAdsFacebookPlugin implements FlutterPlugin, MethodCallHandler {
+
+  private MethodChannel channel;
 
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
-
+    setup(this, flutterPluginBinding.getBinaryMessenger());
   }
 
   @Override
   public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    channel.setMethodCallHandler(null);
+  }
 
+  @Override
+  public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
+    if (call.method.equals("FBAdSettings#setAdvertiserTrackingEnabled")) {
+      // Do nothing on Android.
+      result.success(null);
+    }
+  }
+
+  private void setup(@NonNull GoogleMobileAdsFacebookPlugin plugin,
+                     @NonNull BinaryMessenger binaryMessenger) {
+    plugin.channel = new MethodChannel(
+      binaryMessenger,
+      "plugins.flutter.io/google_mobile_ads_facebook");
+    plugin.channel.setMethodCallHandler(plugin);
   }
 }
