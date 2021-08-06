@@ -52,8 +52,8 @@
   return nil;
 }
 
-- (void)loadAd:(id<FLTAd> _Nonnull)ad adId:(NSNumber *_Nonnull)adId {
-  [_ads setObject:ad forKey:adId];
+- (void)loadAd:(id<FLTAd> _Nonnull)ad {
+  [_ads setObject:ad forKey:ad.adId];
   ad.manager = self;
   [ad load];
 }
@@ -77,24 +77,28 @@
   [ad show];
 }
 
-- (void)onAdLoaded:(id<FLTAd> _Nonnull)ad {
-  [_channel invokeMethod:@"onAdEvent"
-               arguments:@{@"adId" : [self adIdFor:ad], @"eventName" : @"onAdLoaded"}];
-}
-
-- (void)onAdFailedToLoad:(id<FLTAd> _Nonnull)ad error:(FLTLoadAdError *_Nonnull)error {
+- (void)onAdLoaded:(id<FLTAd> _Nonnull)ad responseInfo:(GADResponseInfo *_Nonnull)responseInfo {
   [_channel invokeMethod:@"onAdEvent"
                arguments:@{
-                 @"adId" : [self adIdFor:ad],
+                 @"adId" : ad.adId,
+                 @"eventName" : @"onAdLoaded",
+                 @"responseInfo" : [[FLTGADResponseInfo alloc] initWithResponseInfo:responseInfo]
+               }];
+}
+
+- (void)onAdFailedToLoad:(id<FLTAd> _Nonnull)ad error:(NSError *_Nonnull)error {
+  [_channel invokeMethod:@"onAdEvent"
+               arguments:@{
+                 @"adId" : ad.adId,
                  @"eventName" : @"onAdFailedToLoad",
-                 @"loadAdError" : error
+                 @"loadAdError" : [[FLTLoadAdError alloc] initWithError:error]
                }];
 }
 
 - (void)onAppEvent:(id<FLTAd> _Nonnull)ad name:(NSString *)name data:(NSString *)data {
   [_channel invokeMethod:@"onAdEvent"
                arguments:@{
-                 @"adId" : [self adIdFor:ad],
+                 @"adId" : ad.adId,
                  @"eventName" : @"onAppEvent",
                  @"name" : name,
                  @"data" : data
@@ -102,39 +106,97 @@
 }
 
 - (void)onNativeAdClicked:(FLTNativeAd *_Nonnull)ad {
-  [_channel invokeMethod:@"onAdEvent"
-               arguments:@{@"adId" : [self adIdFor:ad], @"eventName" : @"onNativeAdClicked"}];
+  [self sendAdEvent:@"onNativeAdClicked" ad:ad];
 }
 
 - (void)onNativeAdImpression:(FLTNativeAd *_Nonnull)ad {
-  [_channel invokeMethod:@"onAdEvent"
-               arguments:@{@"adId" : [self adIdFor:ad], @"eventName" : @"onNativeAdImpression"}];
+  [self sendAdEvent:@"onNativeAdImpression" ad:ad];
 }
 
-- (void)onAdOpened:(id<FLTAd> _Nonnull)ad {
-  [_channel invokeMethod:@"onAdEvent"
-               arguments:@{@"adId" : [self adIdFor:ad], @"eventName" : @"onAdOpened"}];
+- (void)onNativeAdWillPresentScreen:(FLTNativeAd *_Nonnull)ad {
+  [self sendAdEvent:@"onNativeAdWillPresentScreen" ad:ad];
 }
 
-- (void)onApplicationExit:(id<FLTAd> _Nonnull)ad {
-  [_channel invokeMethod:@"onAdEvent"
-               arguments:@{@"adId" : [self adIdFor:ad], @"eventName" : @"onApplicationExit"}];
+- (void)onNativeAdDidDismissScreen:(FLTNativeAd *_Nonnull)ad {
+  [self sendAdEvent:@"onNativeAdDidDismissScreen" ad:ad];
 }
 
-- (void)onAdClosed:(id<FLTAd> _Nonnull)ad {
-  [_channel invokeMethod:@"onAdEvent"
-               arguments:@{@"adId" : [self adIdFor:ad], @"eventName" : @"onAdClosed"}];
+- (void)onNativeAdWillDismissScreen:(FLTNativeAd *_Nonnull)ad {
+  [self sendAdEvent:@"onNativeAdWillDismissScreen" ad:ad];
 }
 
 - (void)onRewardedAdUserEarnedReward:(FLTRewardedAd *_Nonnull)ad
                               reward:(FLTRewardItem *_Nonnull)reward {
   [_channel invokeMethod:@"onAdEvent"
                arguments:@{
-                 @"adId" : [self adIdFor:ad],
+                 @"adId" : ad.adId,
                  @"eventName" : @"onRewardedAdUserEarnedReward",
                  @"rewardItem" : reward,
                }];
 }
+
+- (void)onPaidEvent:(id<FLTAd> _Nonnull)ad value:(FLTAdValue *_Nonnull)adValue {
+  [_channel invokeMethod:@"onAdEvent"
+               arguments:@{
+                 @"adId" : ad.adId,
+                 @"eventName" : @"onPaidEvent",
+                 @"valueMicros" : adValue.valueMicros,
+                 @"precision" : [NSNumber numberWithInteger:adValue.precision],
+                 @"currencyCode" : adValue.currencyCode
+               }];
+}
+
+- (void)onBannerImpression:(FLTBannerAd *_Nonnull)ad {
+  [self sendAdEvent:@"onBannerImpression" ad:ad];
+}
+
+- (void)onBannerWillDismissScreen:(FLTBannerAd *)ad {
+  [self sendAdEvent:@"onBannerWillDismissScreen" ad:ad];
+}
+
+- (void)onBannerDidDismissScreen:(FLTBannerAd *)ad {
+  [self sendAdEvent:@"onBannerDidDismissScreen" ad:ad];
+}
+
+- (void)onBannerWillPresentScreen:(FLTBannerAd *_Nonnull)ad {
+  [self sendAdEvent:@"onBannerWillPresentScreen" ad:ad];
+}
+
+- (void)onAdDidPresentFullScreenContent:(id<FLTAd> _Nonnull)ad {
+  [self sendAdEvent:@"onAdDidPresentFullScreenContent" ad:ad];
+}
+
+- (void)adDidDismissFullScreenContent:(id<FLTAd> _Nonnull)ad {
+  [self sendAdEvent:@"adDidDismissFullScreenContent" ad:ad];
+}
+
+- (void)adWillDismissFullScreenContent:(id<FLTAd> _Nonnull)ad {
+  [self sendAdEvent:@"adWillDismissFullScreenContent" ad:ad];
+}
+
+- (void)adDidRecordImpression:(id<FLTAd> _Nonnull)ad {
+  [self sendAdEvent:@"adDidRecordImpression" ad:ad];
+}
+
+- (void)didFailToPresentFullScreenContentWithError:(id<FLTAd> _Nonnull)ad
+                                             error:(NSError *_Nonnull)error {
+  [_channel invokeMethod:@"onAdEvent"
+               arguments:@{
+                 @"adId" : ad.adId,
+                 @"eventName" : @"didFailToPresentFullScreenContentWithError",
+                 @"error" : error
+               }];
+}
+
+/// Sends an ad event with the provided name.
+- (void)sendAdEvent:(NSString *_Nonnull)eventName ad:(id<FLTAd>)ad {
+  [_channel invokeMethod:@"onAdEvent"
+               arguments:@{
+                 @"adId" : ad.adId,
+                 @"eventName" : eventName,
+               }];
+}
+
 @end
 
 @implementation FLTNewGoogleMobileAdsViewFactory

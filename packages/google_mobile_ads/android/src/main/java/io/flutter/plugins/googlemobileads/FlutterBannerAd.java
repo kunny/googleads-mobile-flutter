@@ -14,99 +14,73 @@
 
 package io.flutter.plugins.googlemobileads;
 
-import android.view.View;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import com.google.android.gms.ads.AdView;
 import io.flutter.plugin.platform.PlatformView;
+import io.flutter.util.Preconditions;
 
-class FlutterBannerAd extends FlutterAd implements PlatformView, FlutterDestroyableAd {
+/** A wrapper for {@link AdView}. */
+class FlutterBannerAd extends FlutterAd implements FlutterAdLoadedListener {
+
   @NonNull private final AdInstanceManager manager;
   @NonNull private final String adUnitId;
   @NonNull private final FlutterAdSize size;
-  @Nullable private FlutterAdRequest request;
-  @Nullable private AdView view;
+  @NonNull private final FlutterAdRequest request;
+  @NonNull private final BannerAdCreator bannerAdCreator;
+  @Nullable private AdView adView;
 
-  static class Builder {
-    @Nullable private AdInstanceManager manager;
-    @Nullable private String adUnitId;
-    @Nullable private FlutterAdSize size;
-    @Nullable private FlutterAdRequest request;
-
-    public Builder setManager(@NonNull AdInstanceManager manager) {
-      this.manager = manager;
-      return this;
-    }
-
-    public Builder setAdUnitId(@NonNull String adUnitId) {
-      this.adUnitId = adUnitId;
-      return this;
-    }
-
-    public Builder setSize(@NonNull FlutterAdSize size) {
-      this.size = size;
-      return this;
-    }
-
-    public Builder setRequest(@Nullable FlutterAdRequest request) {
-      this.request = request;
-      return this;
-    }
-
-    FlutterBannerAd build() {
-      if (manager == null) {
-        throw new IllegalStateException("AdInstanceManager cannot not be null.");
-      } else if (adUnitId == null) {
-        throw new IllegalStateException("AdUnitId cannot not be null.");
-      } else if (size == null) {
-        throw new IllegalStateException("Size cannot not be null.");
-      }
-
-      final FlutterBannerAd bannerAd = new FlutterBannerAd(manager, adUnitId, size);
-      bannerAd.request = request;
-      return bannerAd;
-    }
-  }
-
-  private FlutterBannerAd(
-      @NonNull AdInstanceManager manager, @NonNull String adUnitId, @NonNull FlutterAdSize size) {
+  /** Constructs the FlutterBannerAd. */
+  public FlutterBannerAd(
+      int adId,
+      @NonNull AdInstanceManager manager,
+      @NonNull String adUnitId,
+      @NonNull FlutterAdRequest request,
+      @NonNull FlutterAdSize size,
+      @NonNull BannerAdCreator bannerAdCreator) {
+    super(adId);
+    Preconditions.checkNotNull(manager);
+    Preconditions.checkNotNull(adUnitId);
+    Preconditions.checkNotNull(request);
+    Preconditions.checkNotNull(size);
     this.manager = manager;
     this.adUnitId = adUnitId;
+    this.request = request;
     this.size = size;
+    this.bannerAdCreator = bannerAdCreator;
+  }
+
+  @Override
+  public void onAdLoaded() {
+    if (adView != null) {
+      manager.onAdLoaded(adId, adView.getResponseInfo());
+    }
   }
 
   @Override
   void load() {
-    view = new AdView(manager.activity);
-    view.setAdUnitId(adUnitId);
-    view.setAdSize(size.size);
-    view.setAdListener(new FlutterAdListener(manager, this));
-
-    if (request != null) {
-      view.loadAd(request.asAdRequest());
-    } else {
-      view.loadAd(new FlutterAdRequest.Builder().build().asAdRequest());
-    }
+    adView = bannerAdCreator.createAdView();
+    adView.setAdUnitId(adUnitId);
+    adView.setAdSize(size.getAdSize());
+    adView.setOnPaidEventListener(new FlutterPaidEventListener(manager, this));
+    adView.setAdListener(new FlutterBannerAdListener(adId, manager, this));
+    adView.loadAd(request.asAdRequest());
   }
 
-  @Override
   @Nullable
-  public View getView() {
-    return view;
+  @Override
+  public PlatformView getPlatformView() {
+    if (adView == null) {
+      return null;
+    }
+    return new FlutterPlatformView(adView);
   }
 
   @Override
-  public void dispose() {
-    // Do nothing. Cleanup is handled in destroy() below, which is triggered from dispose() being
-    // called on the flutter ad object. This is allows for reuse of the  ad view, for example
-    // in a scrolling list view.
-  }
-
-  @Override
-  public void destroy() {
-    if (view != null) {
-      view.destroy();
-      view = null;
+  void dispose() {
+    if (adView != null) {
+      adView.destroy();
+      adView = null;
     }
   }
 }

@@ -15,39 +15,48 @@
 package io.flutter.plugins.googlemobileads;
 
 import android.util.Log;
-import android.view.View;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.VisibleForTesting;
-import com.google.android.gms.ads.AdLoader;
-import com.google.android.gms.ads.formats.NativeAdOptions;
-import com.google.android.gms.ads.formats.UnifiedNativeAd;
-import com.google.android.gms.ads.formats.UnifiedNativeAdView;
+import com.google.android.gms.ads.AdListener;
+import com.google.android.gms.ads.nativead.NativeAd;
+import com.google.android.gms.ads.nativead.NativeAd.OnNativeAdLoadedListener;
+import com.google.android.gms.ads.nativead.NativeAdOptions;
+import com.google.android.gms.ads.nativead.NativeAdView;
 import io.flutter.plugin.platform.PlatformView;
 import io.flutter.plugins.googlemobileads.GoogleMobileAdsPlugin.NativeAdFactory;
 import java.util.Map;
 
-class FlutterNativeAd extends FlutterAd implements PlatformView, FlutterDestroyableAd {
+/** A wrapper for {@link NativeAd}. */
+class FlutterNativeAd extends FlutterAd {
   private static final String TAG = "FlutterNativeAd";
 
   @NonNull private final AdInstanceManager manager;
   @NonNull private final String adUnitId;
   @NonNull private final NativeAdFactory adFactory;
+  @NonNull private final FlutterAdLoader flutterAdLoader;
   @Nullable private FlutterAdRequest request;
-  @Nullable private FlutterPublisherAdRequest publisherRequest;
+  @Nullable private FlutterAdManagerAdRequest adManagerRequest;
   @Nullable private Map<String, Object> customOptions;
-  @Nullable private UnifiedNativeAdView ad;
+  @Nullable private NativeAdView nativeAdView;
+  @Nullable private final FlutterNativeAdOptions nativeAdOptions;
 
   static class Builder {
     @Nullable private AdInstanceManager manager;
     @Nullable private String adUnitId;
     @Nullable private NativeAdFactory adFactory;
     @Nullable private FlutterAdRequest request;
-    @Nullable private FlutterPublisherAdRequest publisherRequest;
+    @Nullable private FlutterAdManagerAdRequest adManagerRequest;
     @Nullable private Map<String, Object> customOptions;
+    @Nullable private Integer id;
+    @Nullable private FlutterNativeAdOptions nativeAdOptions;
 
     public Builder setAdFactory(@NonNull NativeAdFactory adFactory) {
       this.adFactory = adFactory;
+      return this;
+    }
+
+    public Builder setId(int id) {
+      this.id = id;
       return this;
     }
 
@@ -66,13 +75,18 @@ class FlutterNativeAd extends FlutterAd implements PlatformView, FlutterDestroya
       return this;
     }
 
-    public Builder setRequest(@Nullable FlutterAdRequest request) {
+    public Builder setRequest(@NonNull FlutterAdRequest request) {
       this.request = request;
       return this;
     }
 
-    public Builder setPublisherRequest(@Nullable FlutterPublisherAdRequest request) {
-      this.publisherRequest = request;
+    public Builder setAdManagerRequest(@NonNull FlutterAdManagerAdRequest request) {
+      this.adManagerRequest = request;
+      return this;
+    }
+
+    public Builder setNativeAdOptions(@Nullable FlutterNativeAdOptions nativeAdOptions) {
+      this.nativeAdOptions = nativeAdOptions;
       return this;
     }
 
@@ -83,51 +97,97 @@ class FlutterNativeAd extends FlutterAd implements PlatformView, FlutterDestroya
         throw new IllegalStateException("AdUnitId cannot not be null.");
       } else if (adFactory == null) {
         throw new IllegalStateException("NativeAdFactory cannot not be null.");
-      } else if (request == null && publisherRequest == null) {
-        throw new IllegalStateException("adRequest or publisherRequest must be non-null.");
+      } else if (request == null && adManagerRequest == null) {
+        throw new IllegalStateException("adRequest or addManagerRequest must be non-null.");
       }
 
       final FlutterNativeAd nativeAd;
       if (request == null) {
-        nativeAd = new FlutterNativeAd(manager, adUnitId, adFactory, publisherRequest);
+        nativeAd =
+            new FlutterNativeAd(
+                id,
+                manager,
+                adUnitId,
+                adFactory,
+                adManagerRequest,
+                new FlutterAdLoader(),
+                customOptions,
+                nativeAdOptions);
       } else {
-        nativeAd = new FlutterNativeAd(manager, adUnitId, adFactory, request);
+        nativeAd =
+            new FlutterNativeAd(
+                id,
+                manager,
+                adUnitId,
+                adFactory,
+                request,
+                new FlutterAdLoader(),
+                customOptions,
+                nativeAdOptions);
       }
-      nativeAd.customOptions = customOptions;
       return nativeAd;
     }
   }
 
-  private FlutterNativeAd(
+  protected FlutterNativeAd(
+      int adId,
       @NonNull AdInstanceManager manager,
       @NonNull String adUnitId,
       @NonNull NativeAdFactory adFactory,
-      @NonNull FlutterAdRequest request) {
+      @NonNull FlutterAdRequest request,
+      @NonNull FlutterAdLoader flutterAdLoader,
+      @Nullable Map<String, Object> customOptions,
+      @Nullable FlutterNativeAdOptions nativeAdOptions) {
+    super(adId);
     this.manager = manager;
     this.adUnitId = adUnitId;
     this.adFactory = adFactory;
     this.request = request;
+    this.flutterAdLoader = flutterAdLoader;
+    this.customOptions = customOptions;
+    this.nativeAdOptions = nativeAdOptions;
   }
 
-  private FlutterNativeAd(
+  protected FlutterNativeAd(
+      int adId,
       @NonNull AdInstanceManager manager,
       @NonNull String adUnitId,
       @NonNull NativeAdFactory adFactory,
-      @NonNull FlutterPublisherAdRequest publisherRequest) {
+      @NonNull FlutterAdManagerAdRequest adManagerRequest,
+      @NonNull FlutterAdLoader flutterAdLoader,
+      @Nullable Map<String, Object> customOptions,
+      @Nullable FlutterNativeAdOptions nativeAdOptions) {
+    super(adId);
     this.manager = manager;
     this.adUnitId = adUnitId;
     this.adFactory = adFactory;
-    this.publisherRequest = publisherRequest;
+    this.adManagerRequest = adManagerRequest;
+    this.flutterAdLoader = flutterAdLoader;
+    this.customOptions = customOptions;
+    this.nativeAdOptions = nativeAdOptions;
   }
 
   @Override
   void load() {
-    final AdLoader adLoader = buildAdLoader();
-
+    final OnNativeAdLoadedListener loadedListener = new FlutterNativeAdLoadedListener(this);
+    final AdListener adListener = new FlutterNativeAdListener(adId, manager);
+    // Note we delegate loading the ad to FlutterAdLoader mainly for testing purposes.
+    // As of 20.0.0 of GMA, mockito is unable to mock AdLoader.
+    final NativeAdOptions options =
+        this.nativeAdOptions == null
+            ? new NativeAdOptions.Builder().build()
+            : nativeAdOptions.asNativeAdOptions();
     if (request != null) {
-      adLoader.loadAd(request.asAdRequest());
-    } else if (publisherRequest != null) {
-      adLoader.loadAd(publisherRequest.asPublisherAdRequest());
+      flutterAdLoader.loadNativeAd(
+          manager.activity, adUnitId, loadedListener, options, adListener, request.asAdRequest());
+    } else if (adManagerRequest != null) {
+      flutterAdLoader.loadAdManagerNativeAd(
+          manager.activity,
+          adUnitId,
+          loadedListener,
+          options,
+          adListener,
+          adManagerRequest.asAdManagerAdRequest());
     } else {
       Log.e(TAG, "A null or invalid ad request was provided.");
     }
@@ -135,49 +195,24 @@ class FlutterNativeAd extends FlutterAd implements PlatformView, FlutterDestroya
 
   @Override
   @Nullable
-  public View getView() {
-    return ad;
-  }
-
-  @Override
-  public void dispose() {
-    // Do nothing. Cleanup is handled in destroy() below, which is triggered from dispose() being
-    // called on the flutter ad object. This is allows for reuse of the ad view, for example
-    // in a scrolling list view.
-  }
-
-  @Override
-  public void destroy() {
-    if (ad != null) {
-      ad.destroy();
-      ad = null;
+  public PlatformView getPlatformView() {
+    if (nativeAdView == null) {
+      return null;
     }
+    return new FlutterPlatformView(nativeAdView);
   }
 
-  @NonNull
-  @VisibleForTesting
-  AdLoader buildAdLoader() {
-    return new AdLoader.Builder(manager.activity, adUnitId)
-        .forUnifiedNativeAd(
-            new UnifiedNativeAd.OnUnifiedNativeAdLoadedListener() {
-              @Override
-              public void onUnifiedNativeAdLoaded(UnifiedNativeAd unifiedNativeAd) {
-                ad = adFactory.createNativeAd(unifiedNativeAd, customOptions);
-              }
-            })
-        .withNativeAdOptions(new NativeAdOptions.Builder().build())
-        .withAdListener(
-            new FlutterAdListener(manager, this) {
-              @Override
-              public void onAdClicked() {
-                manager.onNativeAdClicked(FlutterNativeAd.this);
-              }
+  void onNativeAdLoaded(@NonNull NativeAd nativeAd) {
+    nativeAdView = adFactory.createNativeAd(nativeAd, customOptions);
+    nativeAd.setOnPaidEventListener(new FlutterPaidEventListener(manager, this));
+    manager.onAdLoaded(adId, nativeAd.getResponseInfo());
+  }
 
-              @Override
-              public void onAdImpression() {
-                manager.onNativeAdImpression(FlutterNativeAd.this);
-              }
-            })
-        .build();
+  @Override
+  void dispose() {
+    if (nativeAdView != null) {
+      nativeAdView.destroy();
+      nativeAdView = null;
+    }
   }
 }
